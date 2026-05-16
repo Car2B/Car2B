@@ -4,7 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>二手车竞价撮合工具</title>
-<script src="https://imgcache.qq.com/qcloud/tcbjs/1.10.9/tcb.js"></script>
+<script src="https://public.jssdk.cn/tcb-sdk/1.10.9/tcb.js"></script>
+<script>
+// 备用 SDK（如果主 SDK 加载失败则使用）
+if (typeof tcb === 'undefined') {
+  document.write('<script src="https://imgcache.qq.com/qcloud/tcbjs/1.10.9/tcb.js"><\/script>');
+}
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;background:#f5f5f5;color:#1a1a1a;font-size:14px;line-height:1.6}
@@ -373,14 +379,40 @@ let isUnlocked = false;
 let pendingTab = null;
 let currentDealerCarId = null;
 let uploadedPhotos = [];
+let initRetryCount = 0;
+const MAX_INIT_RETRIES = 3;
+
+// 等待 SDK 加载
+function waitForSDK(timeout = 10000) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const check = () => {
+      if (typeof tcb !== 'undefined') {
+        resolve(true);
+      } else if (Date.now() - start > timeout) {
+        reject(new Error('SDK 加载超时'));
+      } else {
+        setTimeout(check, 100);
+      }
+    };
+    check();
+  });
+}
 
 // 初始化 CloudBase
 async function initCloudBase() {
   try {
+    // 先等待 SDK 加载
+    console.log('等待 CloudBase SDK 加载...');
+    await waitForSDK();
+    console.log('SDK 加载成功，初始化 CloudBase...');
+    
     const app = tcb.init({ env: ENV_ID });
+    console.log('正在匿名登录...');
     await app.auth().signInAnonymously();
     db = app.database();
     console.log('CloudBase 初始化成功');
+    
     // 初始化完成后加载数据
     await loadCarsFromCloud();
     // 检查 URL 参数
@@ -389,24 +421,49 @@ async function initCloudBase() {
     checkPinSetup();
   } catch (e) {
     console.error('CloudBase 初始化失败:', e);
-    alert('云端连接失败，请检查网络后刷新页面');
+    initRetryCount++;
+    
+    if (initRetryCount < MAX_INIT_RETRIES) {
+      console.log(`正在重试 (${initRetryCount}/${MAX_INIT_RETRIES})...`);
+      setTimeout(initCloudBase, 2000);
+    } else {
+      alert('云端连接失败，请检查网络后刷新页面（F5）\n\n错误信息: ' + e.message);
+    }
   }
 }
 
 // ===== 从云端加载车源和出价 =====
 async function loadCarsFromCloud() {
   try {
+    if (!db) {
+      console.error('数据库对象未初始化');
+      return;
+    }
+    
+    console.log('正在加载车源数据...');
     const res = await db.collection('cars').orderBy('createdAt', 'desc').get();
     cars = res.data || [];
+    console.log(`加载了 ${cars.length} 条车源`);
+    
     // 加载所有出价
     bids = {};
     for (const car of cars) {
-      const bidRes = await db.collection('bids').where({ carId: car.id }).get();
-      bids[car.id] = bidRes.data || [];
+      try {
+        const bidRes = await db.collection('bids').where({ carId: car.id }).get();
+        bids[car.id] = bidRes.data || [];
+      } catch (bidError) {
+        console.error('加载出价失败:', bidError);
+        bids[car.id] = [];
+      }
     }
     renderCarList();
+    console.log('数据加载完成');
   } catch (e) {
     console.error('加载数据失败:', e);
+    // 即使加载失败也显示空列表
+    cars = [];
+    bids = {};
+    renderCarList();
   }
 }
 
@@ -847,22 +904,22 @@ async function submitBid(){
     dealer: name, phone,
     price: Number(price),
     note,
-    time: new Date().toLocaleString('zh-CN')
+    time: new Date().toLocaleString('zh-CN')时间: new Date().toLocaleString('zh-CN')
   };
   try {
     await db.collection('bids').add(bid);
-    bids[currentDealerCarId].push(bid);
+    bids[currentDealerCarId].push(bid);出价[当前经销商车辆ID].推送(出价);
     closeDealerPage();
     // 显示车商自己的出价确认
-    document.getElementById('successCarName').textContent = car.model;
-    document.getElementById('successPrice').textContent = '¥'+Number(price).toLocaleString();
+    document.getElementById('successCarName').textContent = car.model;文档.getElementById('成功车辆名称').文本内容 = 车辆.型号;文档.getElementById('successCarName'成功汽车名称).textContent = 车.型号;文档.getElementById('成功车辆名称').文本内容 = 车辆.型号;
+    document.getElementById('successPrice').textContent = '¥'+Number(price).toLocaleString();document.getElementById('successPrice')textContent='¥'+NumberpricetoLocaleString;document.getElementById('successPrice')textContent='¥'+NumberpricetoLocaleString;NumberpricetoLocaleString
     document.getElementById('successDealer').textContent = name;
     document.getElementById('successPhone').textContent = phone;
     if(note){
       document.getElementById('successNote').textContent = note;
-      document.getElementById('successNoteRow').style.display='block';
+      document.getElementById('successNoteRow').style.display='block';document.getElementById('successNoteRow')styledisplay='block';
     } else {
-      document.getElementById('successNoteRow').style.display='none';
+      document.getElementById('successNoteRow').style.display='none';document.getElementById('successNoteRow')styledisplay='none';
     }
     document.getElementById('successOverlay').classList.add('show');
   } catch(e) {
